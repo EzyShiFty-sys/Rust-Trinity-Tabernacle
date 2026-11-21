@@ -32,6 +32,8 @@ namespace Oxide.Plugins
         private const string PrefabLantern = "assets/prefabs/deployable/lantern/lantern.deployed.prefab";
         private const string PrefabFireplace = "assets/prefabs/deployable/fireplace/fireplace.deployed.prefab";
         private const string PrefabRug = "assets/prefabs/deployable/rug/rug.deployed.prefab";
+        private const string PrefabMapMarker = "assets/prefabs/tools/map/vendingmachine.prefab";
+        private const string PrefabMapRadiusMarker = "assets/prefabs/tools/map/genericradiusmarker.prefab";
 
         private const float BlockSize = 3.0f;
         private const float WallHeight = 3.0f;
@@ -39,6 +41,9 @@ namespace Oxide.Plugins
         private PluginConfig _config;
         private PluginData _data;
         private bool _pendingWipeSpawn;
+        private readonly HashSet<ulong> _playersInZone = new HashSet<ulong>();
+        private readonly Dictionary<ulong, float> _welcomeCooldowns = new Dictionary<ulong, float>();
+        private readonly List<BaseEntity> _mapMarkers = new List<BaseEntity>();
 
         #endregion
 
@@ -63,6 +68,24 @@ namespace Oxide.Plugins
 
             [JsonProperty("Keep Altar Lights & Hearth Lit")]
             public bool KeepLightsLit { get; set; } = true;
+
+            [JsonProperty("Enable Map Marker")]
+            public bool EnableMapMarker { get; set; } = true;
+
+            [JsonProperty("Map Marker Radius")]
+            public float MapMarkerRadius { get; set; } = 0.25f;
+
+            [JsonProperty("Enable Safe Zone")]
+            public bool EnableSafeZone { get; set; } = true;
+
+            [JsonProperty("Safe Zone Radius (meters)")]
+            public float SafeZoneRadius { get; set; } = 22f;
+
+            [JsonProperty("Send Welcome Message On Enter")]
+            public bool SendWelcomeMessage { get; set; } = true;
+
+            [JsonProperty("Welcome Message")]
+            public string WelcomeMessage { get; set; } = "Welcome to <color=#FFD700>{0}</color>. Peace be with you.";
 
             [JsonProperty("Max Terrain Slope (meters)")]
             public float MaxTerrainSlope { get; set; } = 1.4f;
@@ -92,6 +115,10 @@ namespace Oxide.Plugins
                 if (_config == null)
                 {
                     LoadDefaultConfig();
+                }
+                else
+                {
+                    SaveConfig();
                 }
             }
             catch
@@ -163,28 +190,72 @@ namespace Oxide.Plugins
                 {
                     if (_data.HasSpawnedThisWipe && _data.EntityIds.Count > 0)
                     {
+                        RefreshMapMarkers();
                         return;
                     }
 
                     SpawnAtBestFlatTerrain();
                 });
             }
-            else if (_data.HasSpawnedThisWipe && _config.KeepLightsLit)
+            else if (_data.HasSpawnedThisWipe)
             {
-                RefreshLitEntities();
+                if (_config.KeepLightsLit)
+                {
+                    RefreshLitEntities();
+                }
+
+                RefreshMapMarkers();
+            }
+
+            if (_config.EnableSafeZone || _config.SendWelcomeMessage)
+            {
+                timer.Every(1f, UpdateChurchZone);
+            }
+        }
+
+        private void Unload()
+        {
+            ClearSafeZonePlayers();
+            RemoveMapMarkers();
+        }
+
+        private void OnPlayerDisconnected(BasePlayer player, string reason)
+        {
+            if (player == null)
+            {
+                return;
+            }
+
+            if (_playersInZone.Remove(player.userID))
+            {
+                player.SetPlayerFlag(BasePlayer.PlayerFlags.SafeZone, false);
             }
         }
 
         private object OnEntityTakeDamage(BaseCombatEntity entity, HitInfo info)
         {
-            if (!_config.Indestructible || entity == null || entity.net == null)
+            if (entity == null)
             {
                 return null;
             }
 
-            if (_data.EntityIds.Contains(entity.net.ID.Value))
+            if (_config.Indestructible && entity.net != null && _data.EntityIds.Contains(entity.net.ID.Value))
             {
                 return true;
+            }
+
+            if (_config.EnableSafeZone && entity is BasePlayer victim)
+            {
+                if (_playersInZone.Contains(victim.userID))
+                {
+                    return true;
+                }
+
+                var attacker = info?.InitiatorPlayer;
+                if (attacker != null && _playersInZone.Contains(attacker.userID))
+                {
+                    return true;
+                }
             }
 
             return null;
@@ -685,7 +756,15 @@ namespace Oxide.Plugins
             SpawnEntity(PrefabLantern, origin, rot, new Vector3(-1.1f, 0.05f, 0.2f), 0f);
             SpawnEntity(PrefabLantern, origin, rot, new Vector3(1.1f, 0.05f, 0.2f), 0f);
 
+            // Side aisle lanterns for warm evening lighting
+            foreach (int gz in new[] { 2, 4 })
+            {
+                SpawnEntity(PrefabLantern, origin, rot, new Vector3(-1.4f * BlockSize, 0.05f, gz * BlockSize), 0f);
+                SpawnEntity(PrefabLantern, origin, rot, new Vector3(1.4f * BlockSize, 0.05f, gz * BlockSize), 0f);
+            }
+
             SaveData();
+            RefreshMapMarkers();
         }
 
         private void ClearFootprintObstacles(Vector3 origin, Quaternion rot)
@@ -795,6 +874,9 @@ namespace Oxide.Plugins
 
         private int RemoveExistingChurch()
         {
+            ClearSafeZonePlayers();
+            RemoveMapMarkers();
+
             int count = 0;
             foreach (var id in _data.EntityIds.ToList())
             {
@@ -810,6 +892,139 @@ namespace Oxide.Plugins
             _data.HasSpawnedThisWipe = false;
             SaveData();
             return count;
+        }
+
+        #endregion
+
+        #region Map Markers & Safe Zone
+
+        private Vector3 GetChurchCenter()
+        {
+            return _data.Origin + Quaternion.Euler(0f, _data.RotationY, 0f) * new Vector3(0f, 0f, BlockSize * 3f);
+        }
+
+        private void RefreshMapMarkers()
+        {
+            RemoveMapMarkers();
+
+            if (!_config.EnableMapMarker || !_data.HasSpawnedThisWipe)
+            {
+                return;
+            }
+
+            var center = GetChurchCenter();
+
+            var radiusMarker = GameManager.server.CreateEntity(PrefabMapRadiusMarker, center) as MapMarkerGenericRadius;
+            if (radiusMarker != null)
+            {
+                radiusMarker.alpha = 0.55f;
+                radiusMarker.color1 = new Color(1.0f, 0.84f, 0.35f, 1.0f);
+                radiusMarker.color2 = new Color(1.0f, 0.96f, 0.80f, 1.0f);
+                radiusMarker.radius = Mathf.Clamp(_config.MapMarkerRadius, 0.05f, 2.0f);
+                radiusMarker.Spawn();
+                radiusMarker.SendUpdate();
+                _mapMarkers.Add(radiusMarker);
+            }
+
+            var labelMarker = GameManager.server.CreateEntity(PrefabMapMarker, center) as VendingMachineMapMarker;
+            if (labelMarker != null)
+            {
+                labelMarker.markerShopName = _config.ChurchName;
+                labelMarker.Spawn();
+                labelMarker.SendNetworkUpdate();
+                _mapMarkers.Add(labelMarker);
+            }
+        }
+
+        private void RemoveMapMarkers()
+        {
+            foreach (var marker in _mapMarkers)
+            {
+                if (marker != null && !marker.IsDestroyed)
+                {
+                    marker.Kill();
+                }
+            }
+
+            _mapMarkers.Clear();
+        }
+
+        private void UpdateChurchZone()
+        {
+            if (!_data.HasSpawnedThisWipe || _data.EntityIds.Count == 0)
+            {
+                ClearSafeZonePlayers();
+                return;
+            }
+
+            var center = GetChurchCenter();
+            float radius = Mathf.Max(5f, _config.SafeZoneRadius);
+            float now = UnityEngine.Time.realtimeSinceStartup;
+
+            var currentlyInside = new HashSet<ulong>();
+
+            foreach (var player in BasePlayer.activePlayerList)
+            {
+                if (player == null || !player.IsConnected || player.IsDead())
+                {
+                    continue;
+                }
+
+                if (Vector3.Distance(player.transform.position, center) <= radius)
+                {
+                    currentlyInside.Add(player.userID);
+
+                    if (!_playersInZone.Contains(player.userID))
+                    {
+                        _playersInZone.Add(player.userID);
+
+                        if (_config.EnableSafeZone)
+                        {
+                            player.SetPlayerFlag(BasePlayer.PlayerFlags.SafeZone, true);
+                        }
+
+                        if (_config.SendWelcomeMessage && !string.IsNullOrEmpty(_config.WelcomeMessage))
+                        {
+                            if (!_welcomeCooldowns.TryGetValue(player.userID, out float lastTime) || now - lastTime >= 30f)
+                            {
+                                _welcomeCooldowns[player.userID] = now;
+                                SendReply(player, string.Format(_config.WelcomeMessage, _config.ChurchName));
+                            }
+                        }
+                    }
+                    else if (_config.EnableSafeZone && !player.HasPlayerFlag(BasePlayer.PlayerFlags.SafeZone))
+                    {
+                        player.SetPlayerFlag(BasePlayer.PlayerFlags.SafeZone, true);
+                    }
+                }
+            }
+
+            foreach (var playerId in _playersInZone.ToList())
+            {
+                if (!currentlyInside.Contains(playerId))
+                {
+                    _playersInZone.Remove(playerId);
+                    var player = BasePlayer.FindByID(playerId);
+                    if (player != null && player.IsConnected)
+                    {
+                        player.SetPlayerFlag(BasePlayer.PlayerFlags.SafeZone, false);
+                    }
+                }
+            }
+        }
+
+        private void ClearSafeZonePlayers()
+        {
+            foreach (var playerId in _playersInZone)
+            {
+                var player = BasePlayer.FindByID(playerId);
+                if (player != null && player.IsConnected)
+                {
+                    player.SetPlayerFlag(BasePlayer.PlayerFlags.SafeZone, false);
+                }
+            }
+
+            _playersInZone.Clear();
         }
 
         #endregion

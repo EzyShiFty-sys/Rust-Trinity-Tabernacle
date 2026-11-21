@@ -6,7 +6,9 @@ An Oxide/uMod (and Carbon-compatible) Rust server plugin that automatically spaw
 
 - **Auto-Spawn on Wipe**: Hooks `OnNewSave` and `OnServerInitialized` to automatically spawn once per wipe and persist entity IDs in `oxide/data/TrinityTabernacle.json` across server restarts.
 - **Flat-Terrain Finder**: Searches outward from the map center for flat, dry ground away from monuments and cliffs, and clears overlapping trees/nodes in the building footprint.
-- **Sanctuary Layout**: Builds a 3×5 Stone-grade sanctuary with front steps and porch, pitched roof with vaulted ceiling, front steeple/belfry, center aisle rugs, sittable pews, altar table, hearth fireplace, and perpetually lit lanterns.
+- **Sanctuary Layout**: Builds a 3×5 Stone-grade sanctuary with front steps and porch, pitched roof with vaulted ceiling, front steeple/belfry, center aisle rugs, sittable pews, altar table, hearth fireplace, and perpetually lit lanterns (porch, altar, steeple, and side aisles).
+- **Map Marker**: Displays a golden radius marker and labeled pin on the in-game map so players can easily find the church.
+- **Safe Zone & Welcome Message**: Protects players inside the sanctuary radius with Safe Zone status and sends a customizable welcome message on entry.
 - **Indestructible & No Decay**: Blocks damage, decay, upgrading, demolishing, pickup, fuel consumption, and nearby player building (configurable radius).
 
 ## Installation
@@ -47,6 +49,12 @@ oxide.grant user <steamid> trinitytabernacle.admin
   "Indestructible & No Decay": true,
   "Prevent Player Building Radius (meters, 0 to disable)": 25.0,
   "Keep Altar Lights & Hearth Lit": true,
+  "Enable Map Marker": true,
+  "Map Marker Radius": 0.25,
+  "Enable Safe Zone": true,
+  "Safe Zone Radius (meters)": 22.0,
+  "Send Welcome Message On Enter": true,
+  "Welcome Message": "Welcome to <color=#FFD700>{0}</color>. Peace be with you.",
   "Max Terrain Slope (meters)": 1.4,
   "Min Distance From Monuments (meters)": 130.0,
   "Map Search Radius Percent (0.1 - 0.85)": 0.65,
