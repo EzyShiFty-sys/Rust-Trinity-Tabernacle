@@ -644,7 +644,7 @@ namespace Oxide.Plugins
             _data.EntityIds.Clear();
 
             // 1. Foundations: Front steps (0,-1), Porch (0,0), and 3x5 Main Sanctuary (-1..1, 1..5)
-            SpawnBlock(PrefabFoundationSteps, origin, rot, new Vector3(0f, 0f, -BlockSize), 180f, grade);
+            SpawnBlock(PrefabFoundationSteps, origin, rot, new Vector3(0f, 0f, -BlockSize), 0f, grade);
             SpawnBlock(PrefabFoundation, origin, rot, new Vector3(0f, 0f, 0f), 0f, grade);
 
             for (int gx = -1; gx <= 1; gx++)
@@ -658,13 +658,13 @@ namespace Oxide.Plugins
             // 2. Ground-Floor Exterior Walls (y = 0)
             // Front wall at gz = 1 (facing south / -Z)
             float frontWallZ = 0.5f * BlockSize;
-            SpawnBlock(PrefabWallWindow, origin, rot, new Vector3(-BlockSize, 0f, frontWallZ), 180f, grade);
-            var frontDoorway = SpawnBlock(PrefabWallDoorway, origin, rot, new Vector3(0f, 0f, frontWallZ), 180f, grade);
-            SpawnBlock(PrefabWallWindow, origin, rot, new Vector3(BlockSize, 0f, frontWallZ), 180f, grade);
+            SpawnBlock(PrefabWallWindow, origin, rot, new Vector3(-BlockSize, 0f, frontWallZ), 90f, grade);
+            var frontDoorway = SpawnBlock(PrefabWallDoorway, origin, rot, new Vector3(0f, 0f, frontWallZ), 90f, grade);
+            SpawnBlock(PrefabWallWindow, origin, rot, new Vector3(BlockSize, 0f, frontWallZ), 90f, grade);
 
             if (frontDoorway != null)
             {
-                var door = SpawnEntity(PrefabDoorWood, origin, rot, new Vector3(0f, 0f, frontWallZ), 180f) as Door;
+                var door = SpawnEntity(PrefabDoorWood, origin, rot, new Vector3(0f, 0f, frontWallZ), 90f) as Door;
                 if (door != null)
                 {
                     door.SetFlag(BaseEntity.Flags.Open, true);
@@ -676,15 +676,15 @@ namespace Oxide.Plugins
             {
                 string sidePrefab = gz <= 4 ? PrefabWallWindow : PrefabWall;
                 float zPos = gz * BlockSize;
-                SpawnBlock(sidePrefab, origin, rot, new Vector3(-1.5f * BlockSize, 0f, zPos), -90f, grade);
-                SpawnBlock(sidePrefab, origin, rot, new Vector3(1.5f * BlockSize, 0f, zPos), 90f, grade);
+                SpawnBlock(sidePrefab, origin, rot, new Vector3(-1.5f * BlockSize, 0f, zPos), 180f, grade);
+                SpawnBlock(sidePrefab, origin, rot, new Vector3(1.5f * BlockSize, 0f, zPos), 0f, grade);
             }
 
             // Back altar wall at gz = 5 (facing north / +Z)
             float backWallZ = 5.5f * BlockSize;
             for (int gx = -1; gx <= 1; gx++)
             {
-                SpawnBlock(PrefabWall, origin, rot, new Vector3(gx * BlockSize, 0f, backWallZ), 0f, grade);
+                SpawnBlock(PrefabWall, origin, rot, new Vector3(gx * BlockSize, 0f, backWallZ), -90f, grade);
             }
 
             // 3. Porch Roof (y = WallHeight)
@@ -694,31 +694,30 @@ namespace Oxide.Plugins
             for (int gz = 1; gz <= 5; gz++)
             {
                 float zPos = gz * BlockSize;
-                // Sloped roofs on left & right aisles
-                SpawnBlock(PrefabRoof, origin, rot, new Vector3(-BlockSize, WallHeight, zPos), 90f, grade);
-                SpawnBlock(PrefabRoof, origin, rot, new Vector3(BlockSize, WallHeight, zPos), -90f, grade);
+                // Sloped roofs on left & right aisles (sloping upward toward center nave)
+                SpawnBlock(PrefabRoof, origin, rot, new Vector3(-BlockSize, WallHeight, zPos), -90f, grade);
+                SpawnBlock(PrefabRoof, origin, rot, new Vector3(BlockSize, WallHeight, zPos), 90f, grade);
 
                 // High vaulted center ceiling at y = 2 * WallHeight (6m)
                 SpawnBlock(PrefabFloor, origin, rot, new Vector3(0f, WallHeight * 2f, zPos), 0f, grade);
             }
 
             // Gable walls at front (gz=1) and back (gz=5) at y = WallHeight
-            SpawnBlock(PrefabWallWindow, origin, rot, new Vector3(0f, WallHeight, frontWallZ), 180f, grade);
-            SpawnBlock(PrefabWall, origin, rot, new Vector3(0f, WallHeight, backWallZ), 0f, grade);
+            SpawnBlock(PrefabWallWindow, origin, rot, new Vector3(0f, WallHeight, frontWallZ), 90f, grade);
+            SpawnBlock(PrefabWall, origin, rot, new Vector3(0f, WallHeight, backWallZ), -90f, grade);
 
-            // Side clerestory walls along center nave at y = WallHeight? Skip so sloped roofs stay open to the vaulted ceiling!
             // Close the front & back roof triangle gaps on the sides with half walls
-            SpawnBlock(PrefabWallHalf, origin, rot, new Vector3(-BlockSize, WallHeight, frontWallZ), 180f, grade);
-            SpawnBlock(PrefabWallHalf, origin, rot, new Vector3(BlockSize, WallHeight, frontWallZ), 180f, grade);
-            SpawnBlock(PrefabWallHalf, origin, rot, new Vector3(-BlockSize, WallHeight, backWallZ), 0f, grade);
-            SpawnBlock(PrefabWallHalf, origin, rot, new Vector3(BlockSize, WallHeight, backWallZ), 0f, grade);
+            SpawnBlock(PrefabWallHalf, origin, rot, new Vector3(-BlockSize, WallHeight, frontWallZ), 90f, grade);
+            SpawnBlock(PrefabWallHalf, origin, rot, new Vector3(BlockSize, WallHeight, frontWallZ), 90f, grade);
+            SpawnBlock(PrefabWallHalf, origin, rot, new Vector3(-BlockSize, WallHeight, backWallZ), -90f, grade);
+            SpawnBlock(PrefabWallHalf, origin, rot, new Vector3(BlockSize, WallHeight, backWallZ), -90f, grade);
 
             // 5. Steeple / Bell Tower above front entrance (gx = 0, gz = 1, y = 2 * WallHeight)
             float steepleY = WallHeight * 2f;
-            SpawnBlock(PrefabWallWindow, origin, rot, new Vector3(0f, steepleY, frontWallZ), 180f, grade);
-            SpawnBlock(PrefabWallWindow, origin, rot, new Vector3(0f, steepleY, 1.5f * BlockSize), 0f, grade);
-            SpawnBlock(PrefabWallWindow, origin, rot, new Vector3(-0.5f * BlockSize, steepleY, BlockSize), -90f, grade);
-            SpawnBlock(PrefabWallWindow, origin, rot, new Vector3(0.5f * BlockSize, steepleY, BlockSize), 90f, grade);
+            SpawnBlock(PrefabWallWindow, origin, rot, new Vector3(0f, steepleY, frontWallZ), 90f, grade);
+            SpawnBlock(PrefabWallWindow, origin, rot, new Vector3(0f, steepleY, 1.5f * BlockSize), -90f, grade);
+            SpawnBlock(PrefabWallWindow, origin, rot, new Vector3(-0.5f * BlockSize, steepleY, BlockSize), 180f, grade);
+            SpawnBlock(PrefabWallWindow, origin, rot, new Vector3(0.5f * BlockSize, steepleY, BlockSize), 0f, grade);
             SpawnBlock(PrefabFloor, origin, rot, new Vector3(0f, steepleY + WallHeight, BlockSize), 0f, grade);
             SpawnEntity(PrefabLantern, origin, rot, new Vector3(0f, steepleY + 0.1f, BlockSize), 0f);
 
